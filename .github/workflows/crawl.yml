@@ -1,0 +1,38 @@
+name: 台股主動ETF每日持股爬蟲
+
+on:
+  schedule:
+    # 每天台灣時間 20:05（UTC+8 = UTC 12:05）
+    # 週一到週五執行
+    - cron: '5 12 * * 1-5'
+  # 也可以手動觸發（測試用）
+  workflow_dispatch:
+
+jobs:
+  crawl:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write   # 需要寫入權限才能把資料 commit 回去
+
+    steps:
+      - name: 取得程式碼
+        uses: actions/checkout@v4
+
+      - name: 安裝 Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: 安裝套件
+        run: pip install requests beautifulsoup4 lxml
+
+      - name: 執行爬蟲
+        run: python etf_crawler.py
+
+      - name: 把資料存回 GitHub
+        run: |
+          git config user.name "ETF Bot"
+          git config user.email "etf-bot@github-actions"
+          git add data/
+          git diff --staged --quiet || git commit -m "自動更新：$(date '+%Y-%m-%d %H:%M') 台灣時間"
+          git push
