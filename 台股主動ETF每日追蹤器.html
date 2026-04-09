@@ -1,0 +1,975 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>台股主動式ETF 每日持股追蹤儀表板</title>
+<style>
+  :root {
+    --navy: #1a3055;
+    --navy-light: #2a4570;
+    --gold: #c8992a;
+    --gold-light: #e8c96a;
+    --bg: #f7f6f2;
+    --bg-card: #ffffff;
+    --text: #1a1a1a;
+    --text-muted: #666;
+    --border: rgba(0,0,0,0.08);
+    --green: #2e7d52;
+    --green-bg: #eaf5ef;
+    --red: #c0392b;
+    --red-bg: #fdf0ee;
+    --amber: #b06000;
+    --amber-bg: #fdf3e0;
+    --shadow: 0 1px 3px rgba(0,0,0,0.06), 0 4px 12px rgba(0,0,0,0.04);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #111318;
+      --bg-card: #1c2030;
+      --text: #e8e8e8;
+      --text-muted: #888;
+      --border: rgba(255,255,255,0.08);
+      --green-bg: #0f2d1c;
+      --red-bg: #2d1010;
+      --amber-bg: #2d1f0a;
+      --shadow: 0 1px 3px rgba(0,0,0,0.3);
+    }
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Noto Serif TC', 'Georgia', serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.6;
+    min-height: 100vh;
+  }
+  a { color: inherit; text-decoration: none; }
+
+  /* HEADER */
+  .header {
+    background: var(--navy);
+    color: #fff;
+    padding: 0;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    border-bottom: 2px solid var(--gold);
+  }
+  .header-inner {
+    max-width: 1280px;
+    margin: 0 auto;
+    padding: 14px 24px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    justify-content: space-between;
+  }
+  .logo { display: flex; align-items: center; gap: 12px; }
+  .logo-icon {
+    width: 36px; height: 36px;
+    background: var(--gold);
+    border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px; font-weight: 700; color: var(--navy);
+    letter-spacing: -1px;
+  }
+  .logo-text h1 { font-size: 17px; font-weight: 600; color: #fff; line-height: 1.2; }
+  .logo-text p { font-size: 11px; color: rgba(255,255,255,0.6); margin-top: 1px; }
+  .header-right { display: flex; align-items: center; gap: 12px; }
+  .date-badge {
+    background: rgba(255,255,255,0.1);
+    border: 1px solid rgba(255,255,255,0.2);
+    border-radius: 6px;
+    padding: 5px 12px;
+    font-size: 12px;
+    color: rgba(255,255,255,0.85);
+  }
+  #refresh-btn {
+    background: var(--gold);
+    color: var(--navy);
+    border: none;
+    border-radius: 6px;
+    padding: 7px 14px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    display: flex; align-items: center; gap: 6px;
+    transition: opacity 0.15s;
+  }
+  #refresh-btn:hover { opacity: 0.85; }
+  .spin { animation: spin 1s linear infinite; display: inline-block; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* MAIN */
+  .main { max-width: 1280px; margin: 0 auto; padding: 24px; }
+
+  /* ETF NAV TABS */
+  .etf-tabs {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 24px;
+    flex-wrap: wrap;
+  }
+  .etf-tab {
+    padding: 8px 16px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: var(--bg-card);
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-muted);
+    transition: all 0.15s;
+    white-space: nowrap;
+  }
+  .etf-tab:hover { border-color: var(--navy-light); color: var(--text); }
+  .etf-tab.active {
+    background: var(--navy);
+    color: #fff;
+    border-color: var(--navy);
+  }
+  .etf-tab.all-tab.active { background: var(--gold); color: var(--navy); border-color: var(--gold); }
+
+  /* SUMMARY CARDS */
+  .summary-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 12px;
+    margin-bottom: 24px;
+  }
+  .stat-card {
+    background: var(--bg-card);
+    border: 0.5px solid var(--border);
+    border-radius: 12px;
+    padding: 16px;
+    box-shadow: var(--shadow);
+  }
+  .stat-label { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; }
+  .stat-value { font-size: 24px; font-weight: 600; color: var(--text); line-height: 1; }
+  .stat-sub { font-size: 12px; color: var(--text-muted); margin-top: 4px; }
+  .stat-green .stat-value { color: var(--green); }
+  .stat-red .stat-value { color: var(--red); }
+  .stat-amber .stat-value { color: var(--amber); }
+
+  /* CHANGE SECTION */
+  .section-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 12px;
+    gap: 12px;
+  }
+  .section-title {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    font-size: 11px;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 100px;
+  }
+  .badge-green { background: var(--green-bg); color: var(--green); }
+  .badge-red { background: var(--red-bg); color: var(--red); }
+  .badge-amber { background: var(--amber-bg); color: var(--amber); }
+  .badge-gray { background: var(--border); color: var(--text-muted); }
+
+  /* TABLE */
+  .card {
+    background: var(--bg-card);
+    border: 0.5px solid var(--border);
+    border-radius: 12px;
+    box-shadow: var(--shadow);
+    overflow: hidden;
+    margin-bottom: 20px;
+  }
+  .card-header {
+    padding: 14px 20px;
+    border-bottom: 0.5px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+  }
+  th {
+    padding: 10px 16px;
+    text-align: left;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    border-bottom: 0.5px solid var(--border);
+    background: var(--bg);
+    white-space: nowrap;
+  }
+  th.num { text-align: right; }
+  td {
+    padding: 10px 16px;
+    border-bottom: 0.5px solid var(--border);
+    color: var(--text);
+    vertical-align: middle;
+  }
+  td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: var(--bg); }
+
+  .stock-code { font-weight: 600; font-size: 13px; }
+  .stock-name { font-size: 12px; color: var(--text-muted); margin-top: 1px; }
+  .weight-bar-wrap { display: flex; align-items: center; gap: 8px; }
+  .weight-bar {
+    height: 6px;
+    border-radius: 3px;
+    background: rgba(26,48,85,0.15);
+    flex: 1;
+    min-width: 60px;
+    max-width: 100px;
+  }
+  .weight-bar-fill { height: 100%; border-radius: 3px; background: var(--navy); }
+  .weight-val { font-size: 12px; color: var(--text); min-width: 40px; text-align: right; }
+
+  .change-up { color: var(--green); font-weight: 500; }
+  .change-dn { color: var(--red); font-weight: 500; }
+  .change-nc { color: var(--text-muted); }
+
+  .tag-new {
+    display: inline-block;
+    background: var(--green-bg);
+    color: var(--green);
+    font-size: 10px;
+    font-weight: 700;
+    padding: 1px 6px;
+    border-radius: 4px;
+    margin-left: 4px;
+    letter-spacing: 0.3px;
+  }
+  .tag-out {
+    display: inline-block;
+    background: var(--red-bg);
+    color: var(--red);
+    font-size: 10px;
+    font-weight: 700;
+    padding: 1px 6px;
+    border-radius: 4px;
+    margin-left: 4px;
+  }
+  .etf-pill {
+    display: inline-block;
+    font-size: 10px;
+    font-weight: 600;
+    padding: 2px 7px;
+    border-radius: 100px;
+    margin: 1px;
+    color: var(--navy);
+    background: rgba(26,48,85,0.1);
+  }
+
+  /* SEARCH */
+  .search-wrap {
+    position: relative;
+    margin-bottom: 20px;
+  }
+  #search-input {
+    width: 100%;
+    padding: 10px 16px 10px 40px;
+    border: 0.5px solid var(--border);
+    border-radius: 10px;
+    background: var(--bg-card);
+    color: var(--text);
+    font-size: 14px;
+    outline: none;
+    transition: border-color 0.15s;
+  }
+  #search-input:focus { border-color: var(--navy); }
+  .search-icon {
+    position: absolute;
+    left: 13px; top: 50%;
+    transform: translateY(-50%);
+    color: var(--text-muted);
+    font-size: 16px;
+    pointer-events: none;
+  }
+
+  /* IMPORT PANEL */
+  .import-panel {
+    background: var(--bg-card);
+    border: 0.5px solid var(--border);
+    border-radius: 12px;
+    padding: 20px;
+    margin-bottom: 20px;
+    box-shadow: var(--shadow);
+  }
+  .import-panel h3 { font-size: 14px; font-weight: 600; margin-bottom: 12px; color: var(--text); }
+  .import-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .import-field label { display: block; font-size: 11px; color: var(--text-muted); margin-bottom: 5px; }
+  .import-field select, .import-field textarea {
+    width: 100%;
+    padding: 8px 12px;
+    border: 0.5px solid var(--border);
+    border-radius: 8px;
+    background: var(--bg);
+    color: var(--text);
+    font-size: 13px;
+    outline: none;
+    resize: vertical;
+  }
+  .import-field select:focus, .import-field textarea:focus { border-color: var(--navy); }
+  .import-field textarea { min-height: 120px; font-family: 'Courier New', monospace; font-size: 12px; }
+  .import-actions { display: flex; gap: 8px; margin-top: 12px; }
+  .btn {
+    padding: 8px 16px;
+    border-radius: 7px;
+    border: 0.5px solid var(--border);
+    background: var(--bg-card);
+    color: var(--text);
+    font-size: 13px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .btn:hover { background: var(--bg); }
+  .btn-primary {
+    background: var(--navy);
+    color: #fff;
+    border-color: var(--navy);
+  }
+  .btn-primary:hover { background: var(--navy-light); }
+  .import-hint {
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-top: 8px;
+    line-height: 1.5;
+  }
+
+  /* CHART */
+  .chart-wrap { padding: 20px; }
+
+  /* TABS within view */
+  .view-tabs { display: flex; gap: 6px; }
+  .view-tab {
+    padding: 5px 12px;
+    border-radius: 6px;
+    border: 0.5px solid var(--border);
+    font-size: 12px;
+    cursor: pointer;
+    color: var(--text-muted);
+    background: transparent;
+    transition: all 0.15s;
+  }
+  .view-tab.active { background: var(--navy); color: #fff; border-color: var(--navy); }
+
+  /* CROSS-ETF */
+  .cross-badge-wrap { display: flex; flex-wrap: wrap; gap: 4px; }
+
+  /* EMPTY STATE */
+  .empty-state {
+    text-align: center;
+    padding: 48px 24px;
+    color: var(--text-muted);
+  }
+  .empty-state .icon { font-size: 40px; margin-bottom: 12px; opacity: 0.4; }
+  .empty-state p { font-size: 14px; }
+
+  /* FOOTER */
+  .footer {
+    text-align: center;
+    padding: 24px;
+    font-size: 11px;
+    color: var(--text-muted);
+    border-top: 0.5px solid var(--border);
+    max-width: 1280px;
+    margin: 0 auto;
+  }
+
+  /* TOAST */
+  #toast {
+    position: fixed;
+    bottom: 24px; left: 50%;
+    transform: translateX(-50%) translateY(80px);
+    background: var(--navy);
+    color: #fff;
+    padding: 10px 20px;
+    border-radius: 8px;
+    font-size: 13px;
+    z-index: 9999;
+    transition: transform 0.3s;
+    pointer-events: none;
+    box-shadow: var(--shadow);
+  }
+  #toast.show { transform: translateX(-50%) translateY(0); }
+
+  @media (max-width: 640px) {
+    .main { padding: 16px; }
+    .import-grid { grid-template-columns: 1fr; }
+    .header-inner { gap: 8px; }
+    .summary-grid { grid-template-columns: repeat(2, 1fr); }
+  }
+</style>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@400;500;600&display=swap" rel="stylesheet">
+</head>
+<body>
+
+<div id="toast"></div>
+
+<header class="header">
+  <div class="header-inner">
+    <div class="logo">
+      <div class="logo-icon">ETF</div>
+      <div class="logo-text">
+        <h1>台股主動式ETF 每日持股追蹤</h1>
+        <p>Active ETF Daily Holdings Monitor · 晚間8:00自動更新</p>
+      </div>
+    </div>
+    <div class="header-right">
+      <div class="date-badge" id="date-display">載入中...</div>
+      <button id="refresh-btn" onclick="onRefresh()">
+        <span id="refresh-icon">↻</span> 手動更新
+      </button>
+    </div>
+  </div>
+</header>
+
+<main class="main">
+  <!-- ETF Selector Tabs -->
+  <div class="etf-tabs" id="etf-tabs">
+    <div class="etf-tab all-tab active" onclick="selectEtf('all')">全部彙整</div>
+  </div>
+
+  <!-- Summary Cards -->
+  <div class="summary-grid" id="summary-grid">
+    <div class="stat-card">
+      <div class="stat-label">追蹤ETF檔數</div>
+      <div class="stat-value" id="stat-etf-count">—</div>
+      <div class="stat-sub">主動式ETF</div>
+    </div>
+    <div class="stat-card stat-green">
+      <div class="stat-label">今日新進個股</div>
+      <div class="stat-value" id="stat-new">—</div>
+      <div class="stat-sub">首次買入</div>
+    </div>
+    <div class="stat-card stat-red">
+      <div class="stat-label">今日移出個股</div>
+      <div class="stat-value" id="stat-out">—</div>
+      <div class="stat-sub">完全出清</div>
+    </div>
+    <div class="stat-card stat-amber">
+      <div class="stat-label">權重調整個股</div>
+      <div class="stat-value" id="stat-chg">—</div>
+      <div class="stat-sub">加減碼</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">共同持股</div>
+      <div class="stat-value" id="stat-common">—</div>
+      <div class="stat-sub">5檔皆持有</div>
+    </div>
+  </div>
+
+  <!-- Import Panel -->
+  <details class="import-panel" id="import-panel">
+    <summary style="cursor:pointer; font-size:14px; font-weight:600; color:var(--text); list-style:none; display:flex; align-items:center; gap:8px;">
+      <span style="color:var(--navy);">＋</span> 手動匯入今日持股資料
+    </summary>
+    <div style="margin-top:16px;">
+      <div class="import-grid">
+        <div class="import-field">
+          <label>選擇ETF</label>
+          <select id="import-etf">
+            <option value="00980A">00980A 野村臺灣優選</option>
+            <option value="00981A">00981A 統一台股增長</option>
+            <option value="00982A">00982A 群益台灣強棒</option>
+            <option value="00984A">00984A 安聯台灣高息</option>
+            <option value="00985A">00985A 野村臺灣增強50</option>
+          </select>
+        </div>
+        <div class="import-field">
+          <label>資料日期</label>
+          <select id="import-date">
+            <option value="today">今日</option>
+            <option value="yesterday">昨日（前一交易日）</option>
+          </select>
+        </div>
+      </div>
+      <div class="import-field" style="margin-top:12px;">
+        <label>貼上持股明細（每行一筆，格式：股票代號 股票名稱 持有張數 持有權重%）</label>
+        <textarea id="import-text" placeholder="2330 台積電 12000 10.50
+2317 鴻海 5000 4.20
+2454 聯發科 3000 3.80
+...
+
+也可直接貼上從投信官網複製的文字，AI會自動解析"></textarea>
+      </div>
+      <div class="import-actions">
+        <button class="btn btn-primary" onclick="parseAndImport()">解析並匯入</button>
+        <button class="btn" onclick="loadSampleData()">載入示範資料</button>
+        <button class="btn" onclick="clearData()">清除全部資料</button>
+      </div>
+      <p class="import-hint">
+        💡 資料來源：各投信官網每日公告持股明細（野村投信 / 統一投信 / 群益投信 / 安聯投信）<br>
+        系統會自動比對昨日持股，標示新進、移出、加減碼個股。支援彈性格式，不整齊也能解析。
+      </p>
+    </div>
+  </details>
+
+  <!-- Search -->
+  <div class="search-wrap">
+    <span class="search-icon">🔍</span>
+    <input type="text" id="search-input" placeholder="搜尋股票代號或名稱..." oninput="onSearch()" />
+  </div>
+
+  <!-- Main view -->
+  <div id="main-view"></div>
+
+  <!-- Cross-ETF analysis -->
+  <div id="cross-section"></div>
+</main>
+
+<footer class="footer">
+  <p>資料來源：各投信官網每日公告 · 僅供參考，不構成投資建議 · 資料更新時間：晚間 20:00 後</p>
+  <p style="margin-top:4px;">00980A 野村投信 ｜ 00981A 統一投信 ｜ 00982A 群益投信 ｜ 00984A 安聯投信 ｜ 00985A 野村投信</p>
+</footer>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script>
+const ETF_LIST = [
+  { id: '00980A', name: '野村臺灣優選', short: '野村優選', manager: '野村投信', color: '#1a6b3a' },
+  { id: '00981A', name: '統一台股增長', short: '統一增長', manager: '統一投信', color: '#1a3a6b' },
+  { id: '00982A', name: '群益台灣強棒', short: '群益強棒', manager: '群益投信', color: '#6b1a3a' },
+  { id: '00984A', name: '安聯台灣高息', short: '安聯高息', manager: '安聯投信', color: '#6b4a1a' },
+  { id: '00985A', name: '野村臺灣增強50', short: '野村增強50', manager: '野村投信', color: '#1a5a6b' },
+];
+
+let state = {
+  currentEtf: 'all',
+  searchQ: '',
+  data: {},     // { etfId: { today: [...], yesterday: [...] } }
+};
+
+function today() {
+  return new Date().toLocaleDateString('zh-TW', { year:'numeric', month:'2-digit', day:'2-digit', weekday:'short' });
+}
+
+function updateDateDisplay() {
+  const el = document.getElementById('date-display');
+  if (el) {
+    const now = new Date();
+    const timeStr = now.toLocaleTimeString('zh-TW', { hour:'2-digit', minute:'2-digit' });
+    el.textContent = `${today()} ${timeStr}`;
+  }
+}
+
+function buildEtfTabs() {
+  const wrap = document.getElementById('etf-tabs');
+  wrap.innerHTML = `<div class="etf-tab all-tab ${state.currentEtf==='all'?'active':''}" onclick="selectEtf('all')">全部彙整</div>`;
+  ETF_LIST.forEach(etf => {
+    const hasData = state.data[etf.id] && (state.data[etf.id].today || []).length > 0;
+    wrap.innerHTML += `<div class="etf-tab ${state.currentEtf===etf.id?'active':''}" onclick="selectEtf('${etf.id}')" style="${!hasData?'opacity:0.5':''}">
+      ${etf.id} <span style="font-size:11px;font-weight:400;">${etf.short}</span>
+    </div>`;
+  });
+}
+
+function selectEtf(id) {
+  state.currentEtf = id;
+  buildEtfTabs();
+  renderView();
+}
+
+function getChanges(etfId) {
+  const d = state.data[etfId];
+  if (!d || !d.today) return { newIn: [], outOf: [], changed: [], unchanged: [] };
+  const today = d.today || [];
+  const yest = d.yesterday || [];
+  const yMap = {};
+  yest.forEach(s => yMap[s.code] = s);
+  const tMap = {};
+  today.forEach(s => tMap[s.code] = s);
+
+  const newIn = today.filter(s => !yMap[s.code]);
+  const outOf = yest.filter(s => !tMap[s.code]);
+  const changed = today.filter(s => {
+    if (!yMap[s.code]) return false;
+    const diff = Math.abs(s.weight - yMap[s.code].weight);
+    return diff > 0.01;
+  }).map(s => ({ ...s, prevWeight: yMap[s.code].weight, diff: s.weight - yMap[s.code].weight }));
+  const unchanged = today.filter(s => yMap[s.code] && Math.abs(s.weight - yMap[s.code].weight) <= 0.01);
+
+  return { newIn, outOf, changed, unchanged };
+}
+
+function getAllChanges() {
+  const agg = { newIn: {}, outOf: {}, changed: {}, common: {} };
+  const allToday = {};
+  ETF_LIST.forEach(etf => {
+    const ch = getChanges(etf.id);
+    ch.newIn.forEach(s => {
+      if (!agg.newIn[s.code]) agg.newIn[s.code] = { ...s, etfs: [] };
+      agg.newIn[s.code].etfs.push(etf.id);
+    });
+    ch.outOf.forEach(s => {
+      if (!agg.outOf[s.code]) agg.outOf[s.code] = { ...s, etfs: [] };
+      agg.outOf[s.code].etfs.push(etf.id);
+    });
+    ch.changed.forEach(s => {
+      if (!agg.changed[s.code]) agg.changed[s.code] = { ...s, etfs: [], diffs: {} };
+      agg.changed[s.code].etfs.push(etf.id);
+      agg.changed[s.code].diffs[etf.id] = s.diff;
+    });
+    const today = (state.data[etf.id] || {}).today || [];
+    today.forEach(s => {
+      if (!allToday[s.code]) allToday[s.code] = { ...s, etfs: [] };
+      allToday[s.code].etfs.push(etf.id);
+    });
+  });
+  const etfsWithData = ETF_LIST.filter(e => (state.data[e.id] || {}).today);
+  const n = etfsWithData.length;
+  if (n >= 2) {
+    Object.values(allToday).forEach(s => {
+      if (s.etfs.length === n) agg.common[s.code] = s;
+    });
+  }
+  return { ...agg, allToday };
+}
+
+function updateSummary() {
+  if (state.currentEtf === 'all') {
+    const { newIn, outOf, changed, common } = getAllChanges();
+    const etfsWithData = ETF_LIST.filter(e => (state.data[e.id] || {}).today);
+    document.getElementById('stat-etf-count').textContent = etfsWithData.length;
+    document.getElementById('stat-new').textContent = Object.keys(newIn).length;
+    document.getElementById('stat-out').textContent = Object.keys(outOf).length;
+    document.getElementById('stat-chg').textContent = Object.keys(changed).length;
+    document.getElementById('stat-common').textContent = Object.keys(common).length;
+  } else {
+    const { newIn, outOf, changed, unchanged } = getChanges(state.currentEtf);
+    const today = (state.data[state.currentEtf] || {}).today || [];
+    document.getElementById('stat-etf-count').textContent = 1;
+    document.getElementById('stat-new').textContent = newIn.length;
+    document.getElementById('stat-out').textContent = outOf.length;
+    document.getElementById('stat-chg').textContent = changed.length;
+    document.getElementById('stat-common').textContent = today.length;
+    document.querySelector('#summary-grid .stat-card:last-child .stat-label').textContent = '持股總數';
+    document.querySelector('#summary-grid .stat-card:last-child .stat-sub').textContent = '今日持股';
+  }
+}
+
+function pct(v) { return v != null ? v.toFixed(2) + '%' : '—'; }
+
+function changeArrow(diff) {
+  if (diff > 0.01) return `<span class="change-up">▲ ${Math.abs(diff).toFixed(2)}%</span>`;
+  if (diff < -0.01) return `<span class="change-dn">▼ ${Math.abs(diff).toFixed(2)}%</span>`;
+  return `<span class="change-nc">— 持平</span>`;
+}
+
+function rowHtml(s, etfId, showEtfs) {
+  const wBar = Math.min(100, (s.weight || 0) / 15 * 100);
+  const etfInfo = ETF_LIST.find(e => e.id === etfId);
+  const isNew = s._new;
+  const isOut = s._out;
+  const tagHtml = isNew ? '<span class="tag-new">新進</span>' : (isOut ? '<span class="tag-out">移出</span>' : '');
+  const etfPills = showEtfs && s.etfs ? s.etfs.map(e => `<span class="etf-pill">${e}</span>`).join('') : '';
+  return `<tr>
+    <td>
+      <div class="stock-code">${s.code}${tagHtml}</div>
+      <div class="stock-name">${s.name || '—'}</div>
+    </td>
+    ${showEtfs ? `<td>${etfPills}</td>` : ''}
+    <td class="num">${s.shares != null ? Number(s.shares).toLocaleString() : '—'}</td>
+    <td class="num">
+      <div class="weight-bar-wrap">
+        <div class="weight-bar"><div class="weight-bar-fill" style="width:${wBar}%;${etfInfo?'background:'+etfInfo.color:''}"></div></div>
+        <span class="weight-val">${pct(s.weight)}</span>
+      </div>
+    </td>
+    <td class="num">${s.diff != null ? changeArrow(s.diff) : changeArrow(0)}</td>
+  </tr>`;
+}
+
+function tableWrap(title, badge, rows, showEtfs, emptyMsg) {
+  const cols = showEtfs
+    ? `<th>代號 / 名稱</th><th>持有ETF</th><th class="num">持有張數</th><th class="num">持有權重</th><th class="num">較前日變動</th>`
+    : `<th>代號 / 名稱</th><th class="num">持有張數</th><th class="num">持有權重</th><th class="num">較前日變動</th>`;
+  return `<div class="card" style="margin-bottom:20px;">
+    <div class="card-header">
+      <span class="section-title">${title} ${badge}</span>
+    </div>
+    ${rows.length === 0
+      ? `<div class="empty-state"><div class="icon">◎</div><p>${emptyMsg}</p></div>`
+      : `<div style="overflow-x:auto;"><table><thead><tr>${cols}</tr></thead><tbody>${rows.join('')}</tbody></table></div>`}
+  </div>`;
+}
+
+function renderAllView() {
+  const { newIn, outOf, changed, allToday, common } = getAllChanges();
+  const q = state.searchQ.toLowerCase();
+
+  const filterMap = (obj) => Object.values(obj).filter(s =>
+    !q || s.code.toLowerCase().includes(q) || (s.name||'').toLowerCase().includes(q)
+  );
+
+  const newRows = filterMap(newIn).map(s => rowHtml({...s, _new: true}, null, true));
+  const outRows = filterMap(outOf).map(s => rowHtml({...s, _out: true}, null, true));
+  const chgItems = filterMap(changed).map(s => {
+    const totalDiff = Object.values(s.diffs || {}).reduce((a,b) => a + b, 0);
+    return rowHtml({...s, diff: totalDiff}, null, true);
+  });
+  const commonItems = filterMap(common).sort((a,b) => (b.weight||0)-(a.weight||0)).map(s => rowHtml(s, null, true));
+
+  const v = document.getElementById('main-view');
+  v.innerHTML =
+    tableWrap('今日新進個股', `<span class="badge badge-green">+${Object.keys(newIn).length}</span>`, newRows, true, '今日無新進個股') +
+    tableWrap('今日移出個股', `<span class="badge badge-red">${Object.keys(outOf).length} 檔</span>`, outRows, true, '今日無移出個股') +
+    tableWrap('今日加減碼個股', `<span class="badge badge-amber">${Object.keys(changed).length} 檔</span>`, chgItems, true, '今日無明顯權重異動') +
+    tableWrap('5檔共同持有個股', `<span class="badge badge-gray">${Object.keys(common).length} 檔</span>`, commonItems, true, '尚無足夠ETF資料');
+
+  const cs = document.getElementById('cross-section');
+  cs.innerHTML = '';
+}
+
+function renderSingleView(etfId) {
+  const { newIn, outOf, changed, unchanged } = getChanges(etfId);
+  const today = (state.data[etfId] || {}).today || [];
+  const q = state.searchQ.toLowerCase();
+  const fil = arr => arr.filter(s => !q || s.code.toLowerCase().includes(q) || (s.name||'').toLowerCase().includes(q));
+
+  const newRows = fil(newIn).map(s => rowHtml({...s, _new: true}, etfId, false));
+  const outRows = fil(outOf).map(s => rowHtml({...s, _out: true}, etfId, false));
+  const chgRows = fil(changed).map(s => rowHtml(s, etfId, false));
+  const allRows = fil(today).sort((a,b) => b.weight - a.weight).map(s => {
+    const isNew = newIn.find(x => x.code === s.code);
+    const isChg = changed.find(x => x.code === s.code);
+    return rowHtml({ ...s, _new: !!isNew, diff: isChg ? isChg.diff : 0 }, etfId, false);
+  });
+
+  const v = document.getElementById('main-view');
+  v.innerHTML =
+    tableWrap('今日新進', `<span class="badge badge-green">+${newIn.length}</span>`, newRows, false, '今日無新進') +
+    tableWrap('今日移出', `<span class="badge badge-red">${outOf.length} 檔</span>`, outRows, false, '今日無移出') +
+    tableWrap('加減碼', `<span class="badge badge-amber">${changed.length} 檔</span>`, chgRows, false, '今日無明顯異動') +
+    tableWrap('完整持股明細', `<span class="badge badge-gray">${today.length} 檔</span>`, allRows, false, '尚無今日持股資料（請匯入）');
+
+  // Weight distribution chart
+  const top10 = [...today].sort((a,b) => b.weight - a.weight).slice(0, 10);
+  const etfInfo = ETF_LIST.find(e => e.id === etfId);
+  if (top10.length > 0) {
+    const cs = document.getElementById('cross-section');
+    cs.innerHTML = `<div class="card">
+      <div class="card-header"><span class="section-title">前10大持股權重分布</span></div>
+      <div class="chart-wrap">
+        <div style="position:relative; height:${top10.length*40+60}px;">
+          <canvas id="weight-chart" role="img" aria-label="前10大持股權重長條圖"></canvas>
+        </div>
+      </div>
+    </div>`;
+    setTimeout(() => {
+      const ctx = document.getElementById('weight-chart');
+      if (!ctx) return;
+      new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels: top10.map(s => `${s.code} ${s.name||''}`),
+          datasets: [{
+            label: '持有權重%',
+            data: top10.map(s => parseFloat(s.weight.toFixed(2))),
+            backgroundColor: (etfInfo ? etfInfo.color : '#1a3a6b') + 'cc',
+            borderColor: etfInfo ? etfInfo.color : '#1a3a6b',
+            borderWidth: 1,
+            borderRadius: 4,
+          }]
+        },
+        options: {
+          indexAxis: 'y',
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
+          scales: {
+            x: { ticks: { callback: v => v + '%' }, grid: { color: 'rgba(128,128,128,0.1)' } },
+            y: { ticks: { font: { size: 11 } }, grid: { display: false } }
+          }
+        }
+      });
+    }, 100);
+  }
+}
+
+function renderView() {
+  updateSummary();
+  if (state.currentEtf === 'all') renderAllView();
+  else renderSingleView(state.currentEtf);
+}
+
+function onSearch() {
+  state.searchQ = document.getElementById('search-input').value;
+  renderView();
+}
+
+function parseText(raw) {
+  const lines = raw.split('\n').map(l => l.trim()).filter(Boolean);
+  const results = [];
+  for (const line of lines) {
+    const parts = line.split(/[\t,，\s]+/).filter(Boolean);
+    if (parts.length < 2) continue;
+    const code = parts[0].match(/^\d{4,6}[A-Za-z]?$/) ? parts[0] : null;
+    if (!code) continue;
+    let name = '', shares = null, weight = null;
+    for (let i = 1; i < parts.length; i++) {
+      const p = parts[i];
+      if (/^\d+\.?\d*$/.test(p) && shares === null && parseFloat(p) > 100) { shares = parseFloat(p); }
+      else if (/^\d+\.?\d*%?$/.test(p) && weight === null && parseFloat(p) <= 100) { weight = parseFloat(p.replace('%','')); }
+      else if (!name && isNaN(parseFloat(p))) { name = p; }
+    }
+    if (code) results.push({ code, name: name || '—', shares: shares || 0, weight: weight || 0 });
+  }
+  return results;
+}
+
+function parseAndImport() {
+  const etfId = document.getElementById('import-etf').value;
+  const dateKey = document.getElementById('import-date').value;
+  const raw = document.getElementById('import-text').value;
+  if (!raw.trim()) { showToast('請先貼上持股資料'); return; }
+  const parsed = parseText(raw);
+  if (parsed.length === 0) { showToast('無法解析，請確認格式（每行：代號 名稱 張數 權重）'); return; }
+  if (!state.data[etfId]) state.data[etfId] = {};
+  if (dateKey === 'today') state.data[etfId].today = parsed;
+  else state.data[etfId].yesterday = parsed;
+  saveData();
+  buildEtfTabs();
+  renderView();
+  showToast(`已匯入 ${etfId} ${dateKey==='today'?'今日':'昨日'} 持股 ${parsed.length} 檔`);
+  document.getElementById('import-text').value = '';
+}
+
+function loadSampleData() {
+  // 00981A 統一增長 sample data (昨日)
+  const s1_yest = [
+    {code:'2330',name:'台積電',shares:15000,weight:10.5},
+    {code:'2317',name:'鴻海',shares:8000,weight:5.2},
+    {code:'2454',name:'聯發科',shares:4000,weight:4.1},
+    {code:'2357',name:'華碩',shares:3500,weight:2.8},
+    {code:'3008',name:'大立光',shares:300,weight:2.5},
+    {code:'2382',name:'廣達',shares:5000,weight:2.3},
+    {code:'2308',name:'台達電',shares:4500,weight:3.0},
+    {code:'6669',name:'緯穎',shares:1200,weight:2.1},
+    {code:'3045',name:'台灣大',shares:6000,weight:1.8},
+    {code:'2881',name:'富邦金',shares:20000,weight:1.5},
+  ];
+  const s1_today = [
+    {code:'2330',name:'台積電',shares:15000,weight:10.8},  // +0.3
+    {code:'2317',name:'鴻海',shares:9000,weight:5.6},      // +0.4
+    {code:'2454',name:'聯發科',shares:3500,weight:3.8},    // -0.3
+    {code:'2357',name:'華碩',shares:3500,weight:2.8},
+    {code:'3008',name:'大立光',shares:300,weight:2.5},
+    {code:'2382',name:'廣達',shares:6000,weight:2.6},      // +0.3
+    {code:'2308',name:'台達電',shares:4500,weight:3.0},
+    {code:'6669',name:'緯穎',shares:1500,weight:2.4},      // +0.3
+    {code:'2881',name:'富邦金',shares:20000,weight:1.5},
+    {code:'3711',name:'日月光投控',shares:8000,weight:1.9}, // 新進
+    {code:'2603',name:'長榮',shares:5000,weight:1.2},       // 新進
+  ];
+  // 00982A 群益強棒 sample
+  const s2_yest = [
+    {code:'2330',name:'台積電',shares:12000,weight:9.5},
+    {code:'2317',name:'鴻海',shares:7000,weight:4.8},
+    {code:'2609',name:'陽明',shares:15000,weight:2.2},
+    {code:'2308',name:'台達電',shares:3000,weight:2.9},
+    {code:'6415',name:'矽力*',shares:800,weight:2.1},
+    {code:'3045',name:'台灣大',shares:5000,weight:1.6},
+    {code:'2382',name:'廣達',shares:4000,weight:1.8},
+    {code:'6669',name:'緯穎',shares:900,weight:1.6},
+    {code:'2454',name:'聯發科',shares:2000,weight:2.5},
+    {code:'2892',name:'第一金',shares:25000,weight:1.3},
+  ];
+  const s2_today = [
+    {code:'2330',name:'台積電',shares:12000,weight:9.5},
+    {code:'2317',name:'鴻海',shares:8000,weight:5.2},      // +0.4
+    {code:'2308',name:'台達電',shares:3500,weight:3.2},    // +0.3
+    {code:'6415',name:'矽力*',shares:800,weight:2.1},
+    {code:'3045',name:'台灣大',shares:4000,weight:1.4},    // -0.2
+    {code:'2382',name:'廣達',shares:5000,weight:2.0},      // +0.2
+    {code:'6669',name:'緯穎',shares:900,weight:1.6},
+    {code:'2454',name:'聯發科',shares:2000,weight:2.5},
+    {code:'2892',name:'第一金',shares:25000,weight:1.3},
+    {code:'3711',name:'日月光投控',shares:6000,weight:1.5}, // 新進
+    {code:'2884',name:'玉山金',shares:30000,weight:1.1},    // 新進
+  ];
+
+  state.data['00981A'] = { today: s1_today, yesterday: s1_yest };
+  state.data['00982A'] = { today: s2_today, yesterday: s2_yest };
+  saveData();
+  buildEtfTabs();
+  renderView();
+  showToast('已載入 00981A 及 00982A 示範資料');
+}
+
+function clearData() {
+  if (!confirm('確定清除所有資料？')) return;
+  state.data = {};
+  saveData();
+  buildEtfTabs();
+  renderView();
+  showToast('已清除所有資料');
+}
+
+function saveData() {
+  try { localStorage.setItem('etf_data', JSON.stringify(state.data)); } catch(e) {}
+}
+
+function loadData() {
+  try {
+    const raw = localStorage.getItem('etf_data');
+    if (raw) state.data = JSON.parse(raw);
+  } catch(e) {}
+}
+
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2800);
+}
+
+function onRefresh() {
+  const icon = document.getElementById('refresh-icon');
+  icon.classList.add('spin');
+  updateDateDisplay();
+  renderView();
+  setTimeout(() => icon.classList.remove('spin'), 800);
+  showToast('資料已更新（' + new Date().toLocaleTimeString('zh-TW') + '）');
+}
+
+// Auto-refresh at 20:00
+function scheduleNightRefresh() {
+  const now = new Date();
+  const target = new Date(now);
+  target.setHours(20, 0, 5, 0);
+  if (now >= target) target.setDate(target.getDate() + 1);
+  const ms = target - now;
+  setTimeout(() => {
+    onRefresh();
+    scheduleNightRefresh();
+  }, ms);
+}
+
+// Init
+document.addEventListener('DOMContentLoaded', () => {
+  loadData();
+  updateDateDisplay();
+  setInterval(updateDateDisplay, 60000);
+  buildEtfTabs();
+  renderView();
+  scheduleNightRefresh();
+});
+</script>
+</body>
+</html>
