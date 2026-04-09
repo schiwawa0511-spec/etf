@@ -1,0 +1,108 @@
+{
+  "generated_at": "2026-04-10T05:47:14.837784+08:00",
+  "date": "2026-04-10",
+  "etf_list": [
+    {
+      "id": "00982A",
+      "name": "群益台灣強棒",
+      "manager": "群益投信",
+      "color": "#6b1a3a"
+    },
+    {
+      "id": "00981A",
+      "name": "統一台股增長",
+      "manager": "統一投信",
+      "color": "#1a3a6b"
+    },
+    {
+      "id": "00985A",
+      "name": "野村臺灣增強50",
+      "manager": "野村投信",
+      "color": "#1a5a6b"
+    },
+    {
+      "id": "00980A",
+      "name": "野村臺灣優選",
+      "manager": "野村投信",
+      "color": "#1a6b3a"
+    },
+    {
+      "id": "00984A",
+      "name": "安聯台灣高息",
+      "manager": "安聯投信",
+      "color": "#6b4a1a"
+    }
+  ],
+  "etfs": {
+    "00982A": {
+      "meta": {
+        "id": "00982A",
+        "name": "群益台灣強棒",
+        "manager": "群益投信",
+        "color": "#6b1a3a"
+      },
+      "date": "2026-04-10",
+      "holdings": [],
+      "yesterday": [],
+      "changes": {},
+      "count": 0,
+      "success": false
+    },
+    "00981A": {
+      "meta": {
+        "id": "00981A",
+        "name": "統一台股增長",
+        "manager": "統一投信",
+        "color": "#1a3a6b"
+      },
+      "date": "2026-04-10",
+      "holdings": [],
+      "yesterday": [],
+      "changes": {},
+      "count": 0,
+      "success": false
+    },
+    "00985A": {
+      "meta": {
+        "id": "00985A",
+        "name": "野村臺灣增強50",
+        "manager": "野村投信",
+        "color": "#1a5a6b"
+      },
+      "date": "2026-04-10",
+      "holdings": [],
+      "yesterday": [],
+      "changes": {},
+      "count": 0,
+      "success": false
+    },
+    "00980A": {
+      "meta": {
+        "id": "00980A",
+        "name": "野村臺灣優選",
+        "manager": "野村投信",
+        "color": "#1a6b3a"
+      },
+      "date": "2026-04-10",
+      "holdings": [],
+      "yesterday": [],
+      "changes": {},
+      "count": 0,
+      "success": false
+    },
+    "00984A": {
+      "meta": {
+        "id": "00984A",
+        "name": "安聯台灣高息",
+        "manager": "安聯投信",
+        "color": "#6b4a1a"
+      },
+      "date": "2026-04-10",
+      "holdings": [],
+      "yesterday": [],
+      "changes": {},
+      "count": 0,
+      "success": false
+    }
+  }
+}
