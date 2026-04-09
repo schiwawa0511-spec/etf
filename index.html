@@ -1,0 +1,432 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>台股主動式ETF 每日持股追蹤</title>
+<style>
+:root{--navy:#1a3055;--navy-l:#2a4570;--gold:#c8992a;--bg:#f5f4f0;--card:#fff;--text:#1a1a1a;--muted:#666;--border:rgba(0,0,0,0.08);--green:#1e7a44;--green-bg:#ebf5ef;--red:#b83030;--red-bg:#fdf0ee;--amber:#9a5a00;--amber-bg:#fdf3e0;--shadow:0 1px 2px rgba(0,0,0,0.05),0 4px 10px rgba(0,0,0,0.04)}
+@media(prefers-color-scheme:dark){:root{--bg:#111318;--card:#1c2030;--text:#e8e8e8;--muted:#888;--border:rgba(255,255,255,0.08);--green-bg:#0f2d1c;--red-bg:#2d1010;--amber-bg:#2d1f0a;--shadow:0 1px 3px rgba(0,0,0,0.3)}}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Noto Serif TC',Georgia,serif;background:var(--bg);color:var(--text);line-height:1.6;min-height:100vh}
+.hdr{background:var(--navy);border-bottom:2px solid var(--gold);position:sticky;top:0;z-index:100}
+.hdr-in{max-width:1280px;margin:0 auto;padding:12px 24px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.logo{display:flex;align-items:center;gap:10px}
+.logo-ic{width:34px;height:34px;background:var(--gold);border-radius:7px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:var(--navy);text-align:center;line-height:1.2}
+.logo-tx h1{font-size:15px;font-weight:600;color:#fff;line-height:1.2}
+.logo-tx p{font-size:11px;color:rgba(255,255,255,0.55);margin-top:1px}
+.hdr-r{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.db{background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.18);border-radius:5px;padding:4px 10px;font-size:11px;color:rgba(255,255,255,0.8)}
+.hdr-btn{background:var(--gold);color:var(--navy);border:none;border-radius:5px;padding:6px 12px;font-size:11px;font-weight:700;cursor:pointer}
+.hdr-btn:hover{opacity:.85}
+.main{max-width:1280px;margin:0 auto;padding:20px 24px}
+.notice{border-radius:8px;padding:10px 16px;font-size:12px;margin-bottom:18px;display:flex;align-items:flex-start;gap:8px}
+.notice.info{background:#e8f0f8;color:#1a3055;border:0.5px solid #378ADD}
+.notice.warn{background:var(--amber-bg);color:var(--amber);border:0.5px solid #c8992a}
+.notice.ok{background:var(--green-bg);color:var(--green);border:0.5px solid #1e7a44}
+.etf-tabs{display:flex;gap:6px;margin-bottom:18px;flex-wrap:wrap}
+.etf-tab{padding:7px 14px;border-radius:7px;border:0.5px solid var(--border);background:var(--card);cursor:pointer;font-size:12px;font-weight:500;color:var(--muted);transition:all .12s;white-space:nowrap;display:flex;align-items:center;gap:6px}
+.etf-tab:hover{border-color:var(--navy);color:var(--text)}
+.etf-tab.active{background:var(--navy);color:#fff;border-color:var(--navy)}
+.etf-tab.all.active{background:var(--gold);color:var(--navy);border-color:var(--gold)}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:20px}
+.sc{background:var(--card);border:0.5px solid var(--border);border-radius:10px;padding:14px;box-shadow:var(--shadow)}
+.sc-lbl{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px}
+.sc-val{font-size:22px;font-weight:600;line-height:1}
+.sc-sub{font-size:11px;color:var(--muted);margin-top:3px}
+.sc.green .sc-val{color:var(--green)}.sc.red .sc-val{color:var(--red)}.sc.amber .sc-val{color:var(--amber)}
+.imp-wrap{margin-bottom:18px}
+.imp-toggle{display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;font-weight:600;color:var(--navy);padding:10px 16px;background:var(--card);border:0.5px solid var(--border);border-radius:8px;box-shadow:var(--shadow);user-select:none}
+.imp-body{display:none;background:var(--card);border:0.5px solid var(--border);border-top:none;border-radius:0 0 8px 8px;padding:16px}
+.imp-wrap.open .imp-body{display:block}
+.imp-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.fld label{display:block;font-size:11px;color:var(--muted);margin-bottom:4px}
+.fld select,.fld textarea{width:100%;padding:7px 10px;border:0.5px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text);font-size:12px;outline:none;resize:vertical}
+.fld select:focus,.fld textarea:focus{border-color:var(--navy)}
+.fld textarea{min-height:100px;font-family:'Courier New',monospace;font-size:11px}
+.imp-acts{display:flex;gap:6px;margin-top:10px;flex-wrap:wrap}
+.btn{padding:7px 14px;border-radius:6px;border:0.5px solid var(--border);background:var(--card);color:var(--text);font-size:12px;cursor:pointer;font-weight:500}
+.btn:hover{background:var(--bg)}
+.btn.primary{background:var(--navy);color:#fff;border-color:var(--navy)}
+.sw{position:relative;margin-bottom:18px}
+.si{position:absolute;left:12px;top:50%;transform:translateY(-50%);color:var(--muted);font-size:14px;pointer-events:none}
+#search{width:100%;padding:9px 14px 9px 36px;border:0.5px solid var(--border);border-radius:8px;background:var(--card);color:var(--text);font-size:13px;outline:none}
+#search:focus{border-color:var(--navy)}
+.card{background:var(--card);border:0.5px solid var(--border);border-radius:10px;box-shadow:var(--shadow);overflow:hidden;margin-bottom:16px}
+.card-hdr{padding:12px 18px;border-bottom:0.5px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px}
+.card-title{font-size:14px;font-weight:600;color:var(--text);display:flex;align-items:center;gap:8px}
+.badge{display:inline-flex;align-items:center;font-size:10px;font-weight:700;padding:2px 7px;border-radius:100px}
+.bg-green{background:var(--green-bg);color:var(--green)}.bg-red{background:var(--red-bg);color:var(--red)}.bg-amber{background:var(--amber-bg);color:var(--amber)}.bg-muted{background:var(--border);color:var(--muted)}
+table{width:100%;border-collapse:collapse;font-size:12px}
+th{padding:9px 14px;text-align:left;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;border-bottom:0.5px solid var(--border);background:var(--bg);white-space:nowrap}
+th.r{text-align:right}
+td{padding:9px 14px;border-bottom:0.5px solid var(--border);color:var(--text);vertical-align:middle}
+td.r{text-align:right;font-variant-numeric:tabular-nums}
+tr:last-child td{border-bottom:none}
+tr:hover td{background:var(--bg)}
+.sc-code{font-weight:700;font-size:13px}.sc-name{font-size:11px;color:var(--muted);margin-top:1px}
+.tag{display:inline-block;font-size:9px;font-weight:800;padding:1px 5px;border-radius:3px;margin-left:4px;vertical-align:middle}
+.tag-new{background:var(--green-bg);color:var(--green)}.tag-out{background:var(--red-bg);color:var(--red)}
+.wb{display:flex;align-items:center;gap:6px;justify-content:flex-end}
+.wbar{height:5px;border-radius:3px;background:rgba(26,48,85,0.12);min-width:50px;max-width:80px;flex:1}
+.wfill{height:100%;border-radius:3px}
+.wval{font-size:11px;min-width:42px;text-align:right}
+.cup{color:var(--green);font-weight:600}.cdn{color:var(--red);font-weight:600}.cflat{color:var(--muted)}
+.ep{display:inline-block;font-size:9px;font-weight:700;padding:1px 6px;border-radius:100px;margin:1px}
+.chart-pad{padding:18px}
+.empty{text-align:center;padding:36px;color:var(--muted)}
+.src-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:8px;margin-bottom:18px}
+.src-c{background:var(--card);border:0.5px solid var(--border);border-radius:8px;padding:10px 14px;display:flex;align-items:center;justify-content:space-between;box-shadow:var(--shadow)}
+.src-id{font-weight:700;font-size:12px}.src-nm{font-size:10px;color:var(--muted);margin-top:1px}
+.st{font-size:10px;font-weight:600;padding:2px 7px;border-radius:100px}
+.st-ok{background:var(--green-bg);color:var(--green)}.st-warn{background:var(--amber-bg);color:var(--amber)}.st-err{background:var(--red-bg);color:var(--red)}
+#toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%) translateY(70px);background:var(--navy);color:#fff;padding:9px 18px;border-radius:7px;font-size:12px;z-index:9999;transition:transform .25s;pointer-events:none}
+#toast.show{transform:translateX(-50%) translateY(0)}
+@media(max-width:640px){.main{padding:14px}.imp-grid{grid-template-columns:1fr}.stats{grid-template-columns:repeat(2,1fr)}}
+</style>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@400;500;600&display=swap" rel="stylesheet">
+</head>
+<body>
+<div id="toast"></div>
+<header class="hdr">
+  <div class="hdr-in">
+    <div class="logo">
+      <div class="logo-ic">主動<br>ETF</div>
+      <div class="logo-tx">
+        <h1>台股主動式ETF 每日持股追蹤</h1>
+        <p>Active ETF Holdings Monitor · 每晚 20:05 自動更新</p>
+      </div>
+    </div>
+    <div class="hdr-r">
+      <div class="db" id="date-disp">—</div>
+      <div class="db" id="upd-disp">讀取中...</div>
+      <button class="hdr-btn" onclick="loadGitHub()">↻ 重新載入</button>
+    </div>
+  </div>
+</header>
+<main class="main">
+  <div class="notice info" id="notice"><span>ℹ</span><span id="notice-txt">正在從 GitHub 讀取最新持股資料...</span></div>
+  <div class="src-grid" id="src-grid"></div>
+  <div class="etf-tabs" id="etf-tabs"><div class="etf-tab all active" onclick="sel('all')">全部彙整</div></div>
+  <div class="stats">
+    <div class="sc"><div class="sc-lbl">追蹤ETF</div><div class="sc-val" id="s0">—</div><div class="sc-sub">主動式ETF</div></div>
+    <div class="sc green"><div class="sc-lbl">今日新進</div><div class="sc-val" id="s1">—</div><div class="sc-sub">首次買入</div></div>
+    <div class="sc red"><div class="sc-lbl">今日移出</div><div class="sc-val" id="s2">—</div><div class="sc-sub">完全出清</div></div>
+    <div class="sc amber"><div class="sc-lbl">權重調整</div><div class="sc-val" id="s3">—</div><div class="sc-sub">加減碼合計</div></div>
+    <div class="sc"><div class="sc-lbl" id="s4l">共同持股</div><div class="sc-val" id="s4">—</div><div class="sc-sub" id="s4s">5檔皆持有</div></div>
+  </div>
+  <div class="imp-wrap" id="imp-wrap">
+    <div class="imp-toggle" onclick="document.getElementById('imp-wrap').classList.toggle('open')">
+      <span>＋</span> 手動補充持股資料（爬蟲失敗時使用）
+    </div>
+    <div class="imp-body">
+      <div class="imp-grid">
+        <div class="fld"><label>ETF</label>
+          <select id="imp-etf">
+            <option value="00982A">00982A 群益台灣強棒</option>
+            <option value="00981A">00981A 統一台股增長</option>
+            <option value="00985A">00985A 野村臺灣增強50</option>
+            <option value="00980A">00980A 野村臺灣優選</option>
+            <option value="00984A">00984A 安聯台灣高息</option>
+          </select>
+        </div>
+        <div class="fld"><label>日期</label>
+          <select id="imp-dt"><option value="today">今日</option><option value="yesterday">昨日</option></select>
+        </div>
+      </div>
+      <div class="fld" style="margin-top:10px"><label>貼上持股明細（代號 名稱 張數 權重%，每行一筆）</label>
+        <textarea id="imp-txt" placeholder="2330 台積電 12000 10.50&#10;2317 鴻海 5000 4.20&#10;..."></textarea>
+      </div>
+      <div class="imp-acts">
+        <button class="btn primary" onclick="doImport()">解析並匯入</button>
+        <button class="btn" onclick="loadSample()">載入示範資料</button>
+        <button class="btn" onclick="clearManual()">清除手動資料</button>
+      </div>
+    </div>
+  </div>
+  <div class="sw"><span class="si">🔍</span><input type="text" id="search" placeholder="搜尋股票代號或名稱..." oninput="render()"></div>
+  <div id="main-view"></div>
+  <div id="cross-view"></div>
+</main>
+<footer style="text-align:center;padding:20px;font-size:11px;color:var(--muted);border-top:0.5px solid var(--border);max-width:1280px;margin:0 auto">
+  <p>資料來源：各投信官網每日公告 · 僅供參考，不構成投資建議</p>
+  <p style="margin-top:3px">GitHub Actions 每晚 20:05 自動抓取 · 資料存於 GitHub Repository</p>
+</footer>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script>
+// ★★★ 你的 GitHub 資料網址（已設定好，不需要修改）★★★
+const GITHUB_URL = 'https://raw.githubusercontent.com/schiwawa0511-spec/etf/main/data/etf_data.json';
+
+const ETFS = [
+  {id:'00982A',name:'群益台灣強棒',short:'群益強棒',color:'#6b1a3a'},
+  {id:'00981A',name:'統一台股增長',short:'統一增長',color:'#1a3a6b'},
+  {id:'00985A',name:'野村臺灣增強50',short:'野村增強50',color:'#1a5a6b'},
+  {id:'00980A',name:'野村臺灣優選',short:'野村優選',color:'#1a6b3a'},
+  {id:'00984A',name:'安聯台灣高息',short:'安聯高息',color:'#6b4a1a'},
+];
+
+let S = {cur:'all', ghData:null, manual:{}, chart:null};
+
+// ── 載入 GitHub 資料 ──────────────────────────────────
+async function loadGitHub() {
+  setNotice('info','正在從 GitHub 讀取最新資料...');
+  document.getElementById('upd-disp').textContent = '讀取中...';
+  try {
+    const r = await fetch(GITHUB_URL + '?t=' + Date.now());
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    S.ghData = await r.json();
+    const t = S.ghData.generated_at ? new Date(S.ghData.generated_at).toLocaleString('zh-TW') : '—';
+    document.getElementById('upd-disp').textContent = '更新：' + t;
+    const ok = ETFS.filter(e => S.ghData.etfs?.[e.id]?.success);
+    const fail = ETFS.filter(e => !S.ghData.etfs?.[e.id]?.success);
+    if (fail.length === 0) setNotice('ok', '✓ 資料載入成功，共 ' + ok.length + ' 檔 ETF 有資料');
+    else if (ok.length > 0) setNotice('warn', '部分 ETF 有資料（' + ok.map(e=>e.id).join('、') + '），' + fail.map(e=>e.id).join('、') + ' 尚無資料，可用手動匯入補齊');
+    else setNotice('warn', '爬蟲尚未取得資料，請使用下方手動匯入，或等待今晚 20:05 自動更新');
+    toast('資料已載入');
+  } catch(e) {
+    S.ghData = null;
+    setNotice('warn', '無法讀取 GitHub 資料（' + e.message + '），請確認 Repository 是否為 Public，或使用手動匯入');
+    document.getElementById('upd-disp').textContent = '讀取失敗';
+  }
+  render();
+}
+
+function setNotice(type, txt) {
+  const el = document.getElementById('notice');
+  el.className = 'notice ' + type;
+  document.getElementById('notice-txt').innerHTML = txt;
+}
+
+// ── 合併 GitHub + 手動資料 ────────────────────────────
+function getData(eid) {
+  const gh = S.ghData?.etfs?.[eid] || {};
+  const m  = S.manual[eid] || {};
+  return {
+    today:     m.today     || gh.holdings  || [],
+    yesterday: m.yesterday || gh.yesterday || [],
+  };
+}
+
+function getChanges(eid) {
+  const {today, yesterday} = getData(eid);
+  if (!today.length) return {newIn:[],outOf:[],chgUp:[],chgDn:[],same:[],today,yesterday};
+  const tm = Object.fromEntries(today.map(s=>[s.code,s]));
+  const ym = Object.fromEntries(yesterday.map(s=>[s.code,s]));
+  const newIn=[],outOf=[],chgUp=[],chgDn=[],same=[];
+  for(const s of today){
+    if(!ym[s.code]){newIn.push({...s,change_type:'new_in'});continue;}
+    const d=+(s.weight-ym[s.code].weight).toFixed(4);
+    const e={...s,prev_weight:ym[s.code].weight,weight_diff:d};
+    if(d>0.05)chgUp.push(e); else if(d<-0.05)chgDn.push(e); else same.push(e);
+  }
+  for(const s of yesterday) if(!tm[s.code]) outOf.push({...s,change_type:'out_of'});
+  return {newIn,outOf,chgUp,chgDn,same,today,yesterday};
+}
+
+function getAllSummary() {
+  let ni={},oo={},ch={},cmMap={};
+  const withData = ETFS.filter(e=>getData(e.id).today.length>0);
+  for(const etf of ETFS){
+    const {newIn,outOf,chgUp,chgDn,today}=getChanges(etf.id);
+    newIn.forEach(s=>{if(!ni[s.code])ni[s.code]={...s,etfs:[]};ni[s.code].etfs.push(etf.id);});
+    outOf.forEach(s=>{if(!oo[s.code])oo[s.code]={...s,etfs:[]};oo[s.code].etfs.push(etf.id);});
+    [...chgUp,...chgDn].forEach(s=>{if(!ch[s.code])ch[s.code]={...s,etfs:[],diffs:{}};ch[s.code].etfs.push(etf.id);ch[s.code].diffs[etf.id]=s.weight_diff;});
+    today.forEach(s=>{if(!cmMap[s.code])cmMap[s.code]={...s,etfs:[]};cmMap[s.code].etfs.push(etf.id);});
+  }
+  const n=withData.length;
+  const common=n>=2?Object.fromEntries(Object.entries(cmMap).filter(([,v])=>v.etfs.length===n)):{};
+  return {ni,oo,ch,common,withData};
+}
+
+// ── 渲染 ─────────────────────────────────────────────
+function render() {
+  buildSrc(); buildTabs(); updateStats();
+  S.cur==='all' ? renderAll() : renderSingle(S.cur);
+}
+
+function buildSrc() {
+  document.getElementById('src-grid').innerHTML = ETFS.map(etf=>{
+    const d=getData(etf.id);
+    const m=!!S.manual[etf.id]?.today?.length;
+    const ok=d.today.length>0;
+    const cls=ok?(m?'st-warn':'st-ok'):'st-err';
+    const lbl=ok?(m?'手動補充':'爬蟲正常'):'無資料';
+    return `<div class="src-c"><div><div class="src-id" style="color:${etf.color}">${etf.id}</div><div class="src-nm">${etf.name} · ${d.today.length}檔</div></div><span class="st ${cls}">${lbl}</span></div>`;
+  }).join('');
+}
+
+function buildTabs() {
+  const wrap=document.getElementById('etf-tabs');
+  wrap.innerHTML=`<div class="etf-tab all ${S.cur==='all'?'active':''}" onclick="sel('all')">全部彙整</div>`;
+  ETFS.forEach(e=>{
+    const d=getData(e.id),ok=d.today.length>0;
+    wrap.innerHTML+=`<div class="etf-tab ${S.cur===e.id?'active':''}" onclick="sel('${e.id}')" style="opacity:${ok?1:0.45}">
+      <span style="width:6px;height:6px;border-radius:50%;background:${e.color};display:inline-block"></span>
+      ${e.id} <span style="font-size:10px;opacity:.7">${e.short}</span>
+      ${ok?`<span style="font-size:10px;background:rgba(255,255,255,0.2);padding:1px 5px;border-radius:10px">${d.today.length}</span>`:''}
+    </div>`;
+  });
+}
+
+function updateStats() {
+  if(S.cur==='all'){
+    const {ni,oo,ch,common,withData}=getAllSummary();
+    document.getElementById('s0').textContent=withData.length;
+    document.getElementById('s1').textContent=Object.keys(ni).length;
+    document.getElementById('s2').textContent=Object.keys(oo).length;
+    document.getElementById('s3').textContent=Object.keys(ch).length;
+    document.getElementById('s4').textContent=Object.keys(common).length;
+    document.getElementById('s4l').textContent='共同持股';
+    document.getElementById('s4s').textContent=withData.length+'檔皆持有';
+  } else {
+    const {newIn,outOf,chgUp,chgDn,today}=getChanges(S.cur);
+    document.getElementById('s0').textContent=1;
+    document.getElementById('s1').textContent=newIn.length;
+    document.getElementById('s2').textContent=outOf.length;
+    document.getElementById('s3').textContent=chgUp.length+chgDn.length;
+    document.getElementById('s4').textContent=today.length;
+    document.getElementById('s4l').textContent='持股總數';
+    document.getElementById('s4s').textContent='今日持股';
+  }
+}
+
+const pct=v=>v!=null?(+v).toFixed(2)+'%':'—';
+const num=v=>v?(+v).toLocaleString():'—';
+function chHtml(d){
+  if(d==null)return`<span class="cflat">—</span>`;
+  if(d>0.05)return`<span class="cup">▲ ${Math.abs(d).toFixed(2)}%</span>`;
+  if(d<-0.05)return`<span class="cdn">▼ ${Math.abs(d).toFixed(2)}%</span>`;
+  return`<span class="cflat">—</span>`;
+}
+
+function row(s,eid,showE){
+  const col=eid?ETFS.find(e=>e.id===eid)?.color:'#1a3a6b';
+  const wp=Math.min(100,(s.weight||0)/15*100);
+  const tag=s.change_type==='new_in'?'<span class="tag tag-new">新進</span>':s.change_type==='out_of'?'<span class="tag tag-out">移出</span>':'';
+  const pills=showE&&s.etfs?s.etfs.map(e=>`<span class="ep" style="color:${ETFS.find(x=>x.id===e)?.color||'#333'};background:${ETFS.find(x=>x.id===e)?.color||'#333'}22">${e}</span>`).join(''):'';
+  const q=document.getElementById('search').value.toLowerCase();
+  if(q&&!(s.code.toLowerCase().includes(q)||(s.name||'').toLowerCase().includes(q)))return'';
+  return`<tr>
+    <td><div class="sc-code">${s.code}${tag}</div><div class="sc-name">${s.name||'—'}</div></td>
+    ${showE?`<td>${pills}</td>`:''}
+    <td class="r">${num(s.shares)}</td>
+    <td class="r"><div class="wb"><div class="wbar"><div class="wfill" style="width:${wp}%;background:${col}"></div></div><span class="wval">${pct(s.weight)}</span></div></td>
+    <td class="r">${chHtml(s.weight_diff??0)}</td>
+  </tr>`;
+}
+
+function tbl(title,badge,rows,showE,empty){
+  const hdr=showE
+    ?'<th>代號 / 名稱</th><th>持有ETF</th><th class="r">持有張數</th><th class="r">持有權重</th><th class="r">較前日</th>'
+    :'<th>代號 / 名稱</th><th class="r">持有張數</th><th class="r">持有權重</th><th class="r">較前日</th>';
+  const fr=rows.filter(Boolean);
+  return`<div class="card"><div class="card-hdr"><span class="card-title">${title} ${badge}</span></div>
+    ${fr.length?`<div style="overflow-x:auto"><table><thead><tr>${hdr}</tr></thead><tbody>${fr.join('')}</tbody></table></div>`
+    :`<div class="empty"><p style="font-size:32px;margin-bottom:8px;opacity:.3">◎</p><p style="font-size:13px">${empty}</p></div>`}
+  </div>`;
+}
+
+function renderAll(){
+  const {ni,oo,ch,common}=getAllSummary();
+  const niR=Object.values(ni).sort((a,b)=>b.weight-a.weight).map(s=>row({...s,change_type:'new_in',weight_diff:null},null,true));
+  const ooR=Object.values(oo).map(s=>row({...s,change_type:'out_of',weight_diff:null},null,true));
+  const chR=Object.values(ch).map(s=>row({...s,weight_diff:Object.values(s.diffs||{}).reduce((a,b)=>a+b,0)},null,true));
+  const cmR=Object.values(common).sort((a,b)=>b.weight-a.weight).map(s=>row(s,null,true));
+  document.getElementById('main-view').innerHTML=
+    tbl('今日新進個股',`<span class="badge bg-green">+${Object.keys(ni).length}檔</span>`,niR,true,'今日各ETF均無新進個股')+
+    tbl('今日移出個股',`<span class="badge bg-red">${Object.keys(oo).length}檔</span>`,ooR,true,'今日各ETF均無移出個股')+
+    tbl('加減碼個股',`<span class="badge bg-amber">${Object.keys(ch).length}檔</span>`,chR,true,'今日無明顯權重異動')+
+    tbl('全體共同持股',`<span class="badge bg-muted">${Object.keys(common).length}檔</span>`,cmR,true,'尚無足夠ETF資料');
+  document.getElementById('cross-view').innerHTML='';
+}
+
+function renderSingle(eid){
+  const {newIn,outOf,chgUp,chgDn,today}=getChanges(eid);
+  const allR=[...today].sort((a,b)=>b.weight-a.weight).map(s=>{
+    const ni=newIn.find(x=>x.code===s.code),cu=chgUp.find(x=>x.code===s.code),cd=chgDn.find(x=>x.code===s.code);
+    return row({...s,change_type:ni?'new_in':null,weight_diff:(cu||cd)?.weight_diff??0},eid,false);
+  });
+  document.getElementById('main-view').innerHTML=
+    tbl('今日新進',`<span class="badge bg-green">+${newIn.length}</span>`,newIn.map(s=>row(s,eid,false)),false,'今日無新進')+
+    tbl('今日移出',`<span class="badge bg-red">${outOf.length}檔</span>`,outOf.map(s=>row(s,eid,false)),false,'今日無移出')+
+    tbl('加碼個股',`<span class="badge bg-green">${chgUp.length}檔</span>`,chgUp.map(s=>row(s,eid,false)),false,'今日無加碼')+
+    tbl('減碼個股',`<span class="badge bg-amber">${chgDn.length}檔</span>`,chgDn.map(s=>row(s,eid,false)),false,'今日無減碼')+
+    tbl('完整持股明細',`<span class="badge bg-muted">${today.length}檔</span>`,allR,false,'尚無資料，請等待自動更新或手動匯入');
+  const top10=[...today].sort((a,b)=>b.weight-a.weight).slice(0,10);
+  const col=ETFS.find(e=>e.id===eid)?.color||'#1a3a6b';
+  if(top10.length>0){
+    document.getElementById('cross-view').innerHTML=`<div class="card"><div class="card-hdr"><span class="card-title">前10大持股權重分布</span></div><div class="chart-pad"><div style="position:relative;height:${top10.length*38+50}px"><canvas id="wcht" role="img" aria-label="前10大持股權重"></canvas></div></div></div>`;
+    setTimeout(()=>{
+      if(S.chart){S.chart.destroy();S.chart=null;}
+      const ctx=document.getElementById('wcht');if(!ctx)return;
+      S.chart=new Chart(ctx,{type:'bar',data:{labels:top10.map(s=>`${s.code} ${s.name||''}`),datasets:[{label:'持有權重%',data:top10.map(s=>+(s.weight||0).toFixed(2)),backgroundColor:col+'bb',borderColor:col,borderWidth:1,borderRadius:4}]},options:{indexAxis:'y',responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{ticks:{callback:v=>v+'%'},grid:{color:'rgba(128,128,128,0.1)'}},y:{ticks:{font:{size:11}},grid:{display:false}}}}});
+    },80);
+  } else document.getElementById('cross-view').innerHTML='';
+}
+
+// ── 互動 ─────────────────────────────────────────────
+function sel(id){S.cur=id;render();}
+
+function parseRaw(raw){
+  const out=[];
+  for(const line of raw.split('\n').map(l=>l.trim()).filter(Boolean)){
+    const parts=line.split(/[\t,，\s]+/).filter(Boolean);
+    if(parts.length<2)continue;
+    const code=/^\d{4,6}[A-Za-z]?$/.test(parts[0])?parts[0]:null;
+    if(!code)continue;
+    let name='',shares=null,weight=null;
+    for(let i=1;i<parts.length;i++){
+      const p=parts[i],pn=parseFloat(p.replace(/[%,]/g,''));
+      if(!name&&isNaN(pn)){name=p;continue;}
+      if(pn>100&&shares==null){shares=pn;continue;}
+      if(pn<=100&&pn>=0&&weight==null){weight=pn;continue;}
+    }
+    out.push({code,name:name||'—',shares:shares||0,weight:weight||0});
+  }
+  return out;
+}
+
+function doImport(){
+  const eid=document.getElementById('imp-etf').value;
+  const dk=document.getElementById('imp-dt').value;
+  const raw=document.getElementById('imp-txt').value;
+  if(!raw.trim()){toast('請先貼上持股資料');return;}
+  const p=parseRaw(raw);
+  if(!p.length){toast('無法解析，請確認格式');return;}
+  if(!S.manual[eid])S.manual[eid]={};
+  S.manual[eid][dk==='today'?'today':'yesterday']=p;
+  saveManual();render();
+  toast(`已匯入 ${eid} ${dk==='today'?'今日':'昨日'} ${p.length}檔`);
+  document.getElementById('imp-txt').value='';
+}
+
+function loadSample(){
+  S.manual['00981A']={
+    yesterday:[{code:'2330',name:'台積電',shares:15000,weight:10.5},{code:'2317',name:'鴻海',shares:8000,weight:5.2},{code:'2454',name:'聯發科',shares:4000,weight:4.1},{code:'2308',name:'台達電',shares:4500,weight:3.0},{code:'6669',name:'緯穎',shares:1200,weight:2.1}],
+    today:[{code:'2330',name:'台積電',shares:15000,weight:10.8},{code:'2317',name:'鴻海',shares:9000,weight:5.6},{code:'2454',name:'聯發科',shares:3500,weight:3.8},{code:'2308',name:'台達電',shares:4500,weight:3.0},{code:'6669',name:'緯穎',shares:1500,weight:2.4},{code:'3711',name:'日月光投控',shares:8000,weight:1.9},{code:'2603',name:'長榮',shares:5000,weight:1.2}]
+  };
+  saveManual();render();toast('已載入示範資料');
+}
+
+function clearManual(){if(!confirm('確定清除所有手動資料？'))return;S.manual={};saveManual();render();toast('已清除');}
+function saveManual(){try{localStorage.setItem('etf_manual',JSON.stringify(S.manual));}catch(e){}}
+function loadManual(){try{const r=localStorage.getItem('etf_manual');if(r)S.manual=JSON.parse(r);}catch(e){}}
+function toast(msg){const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),2600);}
+function updateClock(){document.getElementById('date-disp').textContent=new Date().toLocaleString('zh-TW',{year:'numeric',month:'2-digit',day:'2-digit',weekday:'short',hour:'2-digit',minute:'2-digit'});}
+
+// 每晚 20:05 自動重新載入
+function scheduleAuto(){
+  const now=new Date(),t=new Date(now);
+  t.setHours(20,5,0,0);
+  if(now>=t)t.setDate(t.getDate()+1);
+  setTimeout(()=>{loadGitHub();scheduleAuto();},t-now);
+}
+
+document.addEventListener('DOMContentLoaded',()=>{
+  loadManual();updateClock();setInterval(updateClock,30000);
+  loadGitHub();scheduleAuto();
+});
+</script>
+</body>
+</html>
