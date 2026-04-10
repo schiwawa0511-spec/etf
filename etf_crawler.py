@@ -271,8 +271,8 @@ def run():
     log.info("主要來源：公開資訊觀測站 mops.twse.com.tw")
     log.info("=" * 55)
 
-    if now.weekday() >= 5:
-        log.info("非交易日，跳過。"); return
+    # if now.weekday() >= 5:
+    #    log.info("非交易日，跳過。"); return
 
     date_str = now.strftime("%Y-%m-%d")
     sess = requests.Session()
