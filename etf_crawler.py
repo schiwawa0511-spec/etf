@@ -1,13 +1,10 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-台股主動ETF 每日持股爬蟲 v4（GitHub Actions版）
-
-核心策略：改用公開資訊觀測站（mops.twse.com.tw）
-各投信依法每日必須向公開資訊觀測站申報持股，
-此為政府網站，不會封鎖 GitHub Actions。
-
-備援：群益官網（靜態HTML，較穩定）
+台股主動ETF 每日持股爬蟲 v5
+- 每天執行，交易日抓新資料
+- 自動保留過去 60 天歷史快照
+- 輸出 etf_data.json（今日）+ history_index.json（歷史清單）
 """
 
 import re, json, time, logging
@@ -47,15 +44,7 @@ ETF_CONFIG = [
     {"id": "00984A", "name": "安聯台灣高息",   "manager": "安聯投信", "color": "#6b4a1a"},
 ]
 
-# 各ETF在公開資訊觀測站的基金代號
-# 查詢方式：mops.twse.com.tw → 基金 → 主動式ETF → 每日投資組合
-MOPS_FUND_ID = {
-    "00982A": "00982A",
-    "00981A": "00981A",
-    "00985A": "00985A",
-    "00980A": "00980A",
-    "00984A": "00984A",
-}
+KEEP_DAYS = 60  # 保留幾天歷史
 
 def tofloat(s):
     try: return float(re.sub(r"[,，%\s]", "", str(s)))
@@ -117,79 +106,43 @@ def parse_html(html):
         })
     return result
 
-
-# ═══════════════════════════════════════════════════════
-# 主要來源：公開資訊觀測站 mops.twse.com.tw
-# ═══════════════════════════════════════════════════════
-
 def crawl_mops(sess, eid):
-    """
-    公開資訊觀測站查詢主動式ETF每日投資組合。
-    URL: https://mops.twse.com.tw/mops/web/t147sb01
-    POST 參數帶入基金代號，取得當日持股。
-    """
     log.info(f"  [{eid}] 公開資訊觀測站...")
-
-    # 方法一：MOPS 主動式ETF每日投資組合查詢（POST）
     url = "https://mops.twse.com.tw/mops/web/t147sb01"
     today = datetime.now(TW)
-    # 民國年
     roc_year = today.year - 1911
     date_str = f"{roc_year}/{today.month:02d}/{today.day:02d}"
-
     payload = {
-        "encodeURIComponent": "1",
-        "step": "1",
-        "firstin": "1",
-        "off": "1",
-        "keyword4": "",
-        "code1": "",
-        "TYPEK": "all",
-        "co_id": eid,
-        "date": date_str,
+        "encodeURIComponent": "1", "step": "1", "firstin": "1",
+        "off": "1", "keyword4": "", "code1": "", "TYPEK": "all",
+        "co_id": eid, "date": date_str,
     }
-
     try:
         r = sess.post(url, data=payload, headers=HEADERS, timeout=30)
         r.encoding = r.apparent_encoding or "utf-8"
-        log.info(f"    POST {url} → {r.status_code}")
         result = parse_html(r.text)
         if result:
-            log.info(f"  [{eid}] OK MOPS {len(result)}檔")
+            log.info(f"  [{eid}] OK MOPS POST {len(result)}檔")
             return result
     except Exception as e:
-        log.warning(f"    MOPS POST 失敗: {e}")
-
-    # 方法二：MOPS 另一個端點（GET）
-    urls_get = [
+        log.warning(f"    MOPS POST: {e}")
+    for u in [
         f"https://mops.twse.com.tw/mops/web/ajax_t147sb01?co_id={eid}",
         f"https://mopsplus.twse.com.tw/mops/web/t147sb01?co_id={eid}",
-    ]
-    for u in urls_get:
+    ]:
         html = fetch(u, sess)
         if html:
             result = parse_html(html)
             if result:
                 log.info(f"  [{eid}] OK MOPS GET {len(result)}檔")
                 return result
-
     return []
 
-
-# ═══════════════════════════════════════════════════════
-# 備援：群益官網（靜態HTML，較容易抓）
-# ═══════════════════════════════════════════════════════
-
 def crawl_00982A_direct(sess):
-    """群益官網直接抓（靜態HTML）"""
     url = "https://www.capitalfund.com.tw/etf/product/detail/399/portfolio"
-    log.info(f"  [00982A] 群益官網直接...")
-    # 先取首頁建立 cookie
     sess.get("https://www.capitalfund.com.tw/etf", headers=HEADERS, timeout=15)
     time.sleep(2)
-    html = fetch(url, sess, extra_headers={
-        "Referer": "https://www.capitalfund.com.tw/etf/product/overview"
-    })
+    html = fetch(url, sess, extra_headers={"Referer": "https://www.capitalfund.com.tw/etf/product/overview"})
     if html:
         r = parse_html(html)
         if r:
@@ -197,30 +150,14 @@ def crawl_00982A_direct(sess):
             return r
     return []
 
-
-# ═══════════════════════════════════════════════════════
-# 各ETF爬蟲入口
-# ═══════════════════════════════════════════════════════
-
 def crawl(eid, sess):
-    # 先試公開資訊觀測站
     result = crawl_mops(sess, eid)
-    if result:
-        return result
-
-    # 群益有靜態頁面，額外備援
+    if result: return result
     if eid == "00982A":
         result = crawl_00982A_direct(sess)
-        if result:
-            return result
-
+        if result: return result
     log.warning(f"  [{eid}] 全部失敗")
     return []
-
-
-# ═══════════════════════════════════════════════════════
-# 比對 & 快照
-# ═══════════════════════════════════════════════════════
 
 def compare(today, yesterday):
     t = {s["code"]: s for s in today}
@@ -246,6 +183,12 @@ def compare(today, yesterday):
         "same":      sorted(same, key=lambda x: x["weight"], reverse=True),
     }
 
+def load_snap(eid, date_str):
+    p = HIST / f"{eid}_{date_str}.json"
+    if not p.exists(): return []
+    try: return json.loads(p.read_text(encoding="utf-8")).get("holdings", [])
+    except: return []
+
 def load_yesterday(eid):
     snaps = sorted(HIST.glob(f"{eid}_*.json"))
     if not snaps: return []
@@ -259,70 +202,140 @@ def save_snap(eid, holdings, date_str):
         encoding="utf-8"
     )
 
+def cleanup_old_snaps():
+    """刪除超過 KEEP_DAYS 天的舊快照"""
+    cutoff = datetime.now(TW) - timedelta(days=KEEP_DAYS)
+    cutoff_str = cutoff.strftime("%Y-%m-%d")
+    for p in HIST.glob("*.json"):
+        # 檔名格式: 00982A_2026-04-10.json
+        parts = p.stem.split("_")
+        if len(parts) >= 2:
+            date_part = parts[-1]
+            if date_part < cutoff_str:
+                p.unlink()
+                log.info(f"  清除舊快照: {p.name}")
 
-# ═══════════════════════════════════════════════════════
-# 主程式
-# ═══════════════════════════════════════════════════════
+def build_history_index():
+    """
+    掃描 history/ 資料夾，建立歷史索引。
+    輸出 data/history_index.json，格式：
+    {
+      "dates": ["2026-04-10", "2026-04-09", ...],  # 有資料的日期（降序）
+      "etfs": {
+        "00982A": {
+          "2026-04-10": { "count": 50, "success": true },
+          ...
+        }
+      }
+    }
+    """
+    index = {"dates": set(), "etfs": {e["id"]: {} for e in ETF_CONFIG}}
 
-def run():
+    for p in HIST.glob("*.json"):
+        parts = p.stem.split("_")
+        if len(parts) < 2: continue
+        date_part = "_".join(parts[1:])   # 2026-04-10
+        eid_part = parts[0]               # 00982A
+        if eid_part not in index["etfs"]: continue
+        try:
+            data = json.loads(p.read_text(encoding="utf-8"))
+            holdings = data.get("holdings", [])
+            index["etfs"][eid_part][date_part] = {
+                "count": len(holdings),
+                "success": len(holdings) > 0,
+            }
+            if holdings:
+                index["dates"].add(date_part)
+        except: pass
+
+    index["dates"] = sorted(index["dates"], reverse=True)
+    return index
+
+def build_daily_json(date_str, sess=None):
+    """
+    建立某一天的完整 JSON（含比對前一天的異動）
+    回傳 output dict
+    """
     now = datetime.now(TW)
-    log.info("=" * 55)
-    log.info(f"台股主動ETF爬蟲 v4  {now:%Y-%m-%d %H:%M} TW")
-    log.info("主要來源：公開資訊觀測站 mops.twse.com.tw")
-    log.info("=" * 55)
-
-    # if now.weekday() >= 5:
-    #    log.info("非交易日，跳過。"); return
-
-    date_str = now.strftime("%Y-%m-%d")
-    sess = requests.Session()
-
     output = {
         "generated_at": now.isoformat(),
         "date": date_str,
         "etf_list": ETF_CONFIG,
         "etfs": {},
     }
-
     for cfg in ETF_CONFIG:
         eid = cfg["id"]
-        log.info(f"\n{'─'*40}\n[{eid}] {cfg['name']}")
-        today_h = []
-        try:
-            today_h = crawl(eid, sess)
-        except Exception as e:
-            log.error(f"  [{eid}] 例外: {e}")
+        today_h = load_snap(eid, date_str)
 
-        yest_h = load_yesterday(eid)
+        # 找前一個交易日的快照
+        snaps = sorted(HIST.glob(f"{eid}_*.json"))
+        yest_h = []
+        for p in reversed(snaps):
+            d = "_".join(p.stem.split("_")[1:])
+            if d < date_str:
+                try:
+                    yest_h = json.loads(p.read_text(encoding="utf-8")).get("holdings", [])
+                    break
+                except: pass
+
         changes = compare(today_h, yest_h) if today_h and yest_h else {}
-        if today_h:
-            save_snap(eid, today_h, date_str)
-
         output["etfs"][eid] = {
             "meta": cfg, "date": date_str,
             "holdings": today_h, "yesterday": yest_h,
             "changes": changes, "count": len(today_h),
             "success": bool(today_h),
         }
-        log.info(
-            f"  [{eid}] {'✓' if today_h else '✗'} {len(today_h)}檔  "
-            f"新:{len(changes.get('new_in',[]))} 出:{len(changes.get('out_of',[]))} "
-            f"加:{len(changes.get('weight_up',[]))} 減:{len(changes.get('weight_dn',[]))}"
-        )
-        time.sleep(2)
+    return output
 
+def run():
+    now = datetime.now(TW)
+    log.info("=" * 55)
+    log.info(f"台股主動ETF爬蟲 v5  {now:%Y-%m-%d %H:%M} TW")
+    log.info("=" * 55)
+
+    date_str = now.strftime("%Y-%m-%d")
+    is_trading_day = now.weekday() < 5  # 週一到週五
+
+    if is_trading_day:
+        log.info("交易日 → 抓取今日持股")
+        sess = requests.Session()
+        for cfg in ETF_CONFIG:
+            eid = cfg["id"]
+            log.info(f"\n{'─'*40}\n[{eid}] {cfg['name']}")
+            today_h = []
+            try:
+                today_h = crawl(eid, sess)
+            except Exception as e:
+                log.error(f"  [{eid}] 例外: {e}")
+            if today_h:
+                save_snap(eid, today_h, date_str)
+            log.info(f"  [{eid}] {'✓' if today_h else '✗'} {len(today_h)}檔")
+            time.sleep(2)
+        cleanup_old_snaps()
+    else:
+        log.info("非交易日（週六/日）→ 跳過抓取，僅更新索引")
+
+    # 無論交易日或假日，都重建今日 JSON 和歷史索引
+    output = build_daily_json(date_str)
     (DATA / "etf_data.json").write_text(
         json.dumps(output, ensure_ascii=False, indent=2), encoding="utf-8"
     )
+
+    # 歷史索引（讓網頁知道哪些日期有資料）
+    hist_index = build_history_index()
+    (DATA / "history_index.json").write_text(
+        json.dumps(hist_index, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+
     (DATA / "last_update.txt").write_text(now.isoformat())
 
     ok  = [k for k, v in output["etfs"].items() if v["success"]]
     err = [k for k, v in output["etfs"].items() if not v["success"]]
     log.info(f"\n{'='*55}")
-    log.info(f"完成！成功:{len(ok)} {ok}")
-    if err:
+    log.info(f"完成！今日成功:{len(ok)} {ok}")
+    log.info(f"歷史日期數:{len(hist_index['dates'])} 筆")
+    if err and is_trading_day:
         log.warning(f"失敗:{len(err)} {err}")
-        log.warning("→ 請用網頁儀表板的手動匯入功能補齊")
     log.info("=" * 55)
 
 if __name__ == "__main__":
