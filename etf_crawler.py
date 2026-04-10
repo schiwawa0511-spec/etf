@@ -1,14 +1,16 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-台股主動ETF 每日持股爬蟲 v3（GitHub Actions版）
-改用更可靠的資料來源：
-  00982A → 群益官網（加強 headers）
-  00981A → 統一投信官網持股頁面
-  其餘   → 各投信官網持股頁面 + TWSE備援
+台股主動ETF 每日持股爬蟲 v4（GitHub Actions版）
+
+核心策略：改用公開資訊觀測站（mops.twse.com.tw）
+各投信依法每日必須向公開資訊觀測站申報持股，
+此為政府網站，不會封鎖 GitHub Actions。
+
+備援：群益官網（靜態HTML，較穩定）
 """
 
-import re, json, time, logging, csv, io
+import re, json, time, logging
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 import requests
@@ -31,18 +33,10 @@ logging.basicConfig(
 log = logging.getLogger(__name__)
 TW = timezone(timedelta(hours=8))
 
-# 模擬真實瀏覽器的完整 headers
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
-    "Accept-Language": "zh-TW,zh;q=0.9,en-US;q=0.8,en;q=0.7",
-    "Accept-Encoding": "gzip, deflate, br",
-    "Connection": "keep-alive",
-    "Upgrade-Insecure-Requests": "1",
-    "Sec-Fetch-Dest": "document",
-    "Sec-Fetch-Mode": "navigate",
-    "Sec-Fetch-Site": "none",
-    "Cache-Control": "max-age=0",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "zh-TW,zh;q=0.9",
 }
 
 ETF_CONFIG = [
@@ -52,6 +46,16 @@ ETF_CONFIG = [
     {"id": "00980A", "name": "野村臺灣優選",   "manager": "野村投信", "color": "#1a6b3a"},
     {"id": "00984A", "name": "安聯台灣高息",   "manager": "安聯投信", "color": "#6b4a1a"},
 ]
+
+# 各ETF在公開資訊觀測站的基金代號
+# 查詢方式：mops.twse.com.tw → 基金 → 主動式ETF → 每日投資組合
+MOPS_FUND_ID = {
+    "00982A": "00982A",
+    "00981A": "00981A",
+    "00985A": "00985A",
+    "00980A": "00980A",
+    "00984A": "00984A",
+}
 
 def tofloat(s):
     try: return float(re.sub(r"[,，%\s]", "", str(s)))
@@ -64,24 +68,23 @@ def toint(s):
 def is_code(s):
     return bool(re.match(r"^\d{4,6}[A-Za-z]?$", str(s).strip()))
 
-def fetch(url, sess, timeout=30, referer=None):
+def fetch(url, sess, timeout=30, extra_headers=None):
     h = dict(HEADERS)
-    if referer:
-        h["Referer"] = referer
+    if extra_headers:
+        h.update(extra_headers)
     for i in range(3):
         try:
             r = sess.get(url, headers=h, timeout=timeout)
             r.raise_for_status()
             r.encoding = r.apparent_encoding or "utf-8"
-            log.info(f"    GET {url[:80]} → {r.status_code}")
+            log.info(f"    {r.status_code} {url[:80]}")
             return r.text
         except Exception as e:
             log.warning(f"    [{i+1}/3] {e}")
-            time.sleep(5 * (i + 1))
+            time.sleep(4 * (i + 1))
     return None
 
 def parse_html(html):
-    """從 HTML 找最像持股的表格"""
     soup = BeautifulSoup(html, "lxml")
     best, bn = None, 0
     for tbl in soup.find_all("table"):
@@ -114,163 +117,106 @@ def parse_html(html):
         })
     return result
 
-def parse_csv(text):
-    result = []
-    ci = ni = si = wi = -1
-    hdr = False
-    for row in csv.reader(io.StringIO(text)):
-        if not any(row): continue
-        if not hdr:
-            for i, c in enumerate(row):
-                if re.search(r"代號|代碼", c): ci = i
-                if re.search(r"名稱", c): ni = i
-                if re.search(r"股數|張數", c): si = i
-                if re.search(r"比重|權重|%", c): wi = i
-            if ci >= 0: hdr = True
-            continue
-        if ci < 0 or ci >= len(row): continue
-        code = row[ci].strip()
-        if not is_code(code): continue
-        result.append({
-            "code": code,
-            "name": row[ni].strip() if ni >= 0 and ni < len(row) else "—",
-            "shares": toint(row[si]) if si >= 0 and si < len(row) else 0,
-            "weight": tofloat(row[wi]) if wi >= 0 and wi < len(row) else 0,
-        })
-    return result
 
 # ═══════════════════════════════════════════════════════
-# 各 ETF 爬蟲
+# 主要來源：公開資訊觀測站 mops.twse.com.tw
 # ═══════════════════════════════════════════════════════
 
-def crawl_00982A(sess):
-    """群益 — 加 Referer header"""
-    eid = "00982A"
+def crawl_mops(sess, eid):
+    """
+    公開資訊觀測站查詢主動式ETF每日投資組合。
+    URL: https://mops.twse.com.tw/mops/web/t147sb01
+    POST 參數帶入基金代號，取得當日持股。
+    """
+    log.info(f"  [{eid}] 公開資訊觀測站...")
+
+    # 方法一：MOPS 主動式ETF每日投資組合查詢（POST）
+    url = "https://mops.twse.com.tw/mops/web/t147sb01"
+    today = datetime.now(TW)
+    # 民國年
+    roc_year = today.year - 1911
+    date_str = f"{roc_year}/{today.month:02d}/{today.day:02d}"
+
+    payload = {
+        "encodeURIComponent": "1",
+        "step": "1",
+        "firstin": "1",
+        "off": "1",
+        "keyword4": "",
+        "code1": "",
+        "TYPEK": "all",
+        "co_id": eid,
+        "date": date_str,
+    }
+
+    try:
+        r = sess.post(url, data=payload, headers=HEADERS, timeout=30)
+        r.encoding = r.apparent_encoding or "utf-8"
+        log.info(f"    POST {url} → {r.status_code}")
+        result = parse_html(r.text)
+        if result:
+            log.info(f"  [{eid}] OK MOPS {len(result)}檔")
+            return result
+    except Exception as e:
+        log.warning(f"    MOPS POST 失敗: {e}")
+
+    # 方法二：MOPS 另一個端點（GET）
+    urls_get = [
+        f"https://mops.twse.com.tw/mops/web/ajax_t147sb01?co_id={eid}",
+        f"https://mopsplus.twse.com.tw/mops/web/t147sb01?co_id={eid}",
+    ]
+    for u in urls_get:
+        html = fetch(u, sess)
+        if html:
+            result = parse_html(html)
+            if result:
+                log.info(f"  [{eid}] OK MOPS GET {len(result)}檔")
+                return result
+
+    return []
+
+
+# ═══════════════════════════════════════════════════════
+# 備援：群益官網（靜態HTML，較容易抓）
+# ═══════════════════════════════════════════════════════
+
+def crawl_00982A_direct(sess):
+    """群益官網直接抓（靜態HTML）"""
     url = "https://www.capitalfund.com.tw/etf/product/detail/399/portfolio"
-    log.info(f"  [{eid}] 群益官網...")
-    # 先訪問首頁建立 session cookie
-    fetch("https://www.capitalfund.com.tw/etf", sess)
+    log.info(f"  [00982A] 群益官網直接...")
+    # 先取首頁建立 cookie
+    sess.get("https://www.capitalfund.com.tw/etf", headers=HEADERS, timeout=15)
     time.sleep(2)
-    html = fetch(url, sess, referer="https://www.capitalfund.com.tw/etf/product/overview")
-    if not html:
-        return []
-    r = parse_html(html)
-    log.info(f"  [{eid}] {'OK' if r else 'FAIL'} {len(r)}檔")
-    return r
-
-def crawl_00981A(sess):
-    """統一 — 直接抓持股頁"""
-    eid = "00981A"
-    # 統一投信持股頁面（不同於 PCF 下載）
-    urls = [
-        "https://www.ezmoney.com.tw/ETF/Fund/Info?fundCode=49YTW",
-        "https://www.ezmoney.com.tw/ETF/Fund/Portfolio?fundCode=49YTW",
-    ]
-    for url in urls:
-        log.info(f"  [{eid}] {url[:60]}...")
-        fetch("https://www.ezmoney.com.tw/ETF/", sess)
-        time.sleep(2)
-        html = fetch(url, sess, referer="https://www.ezmoney.com.tw/ETF/")
-        if not html: continue
+    html = fetch(url, sess, extra_headers={
+        "Referer": "https://www.capitalfund.com.tw/etf/product/overview"
+    })
+    if html:
         r = parse_html(html)
         if r:
-            log.info(f"  [{eid}] OK {len(r)}檔")
+            log.info(f"  [00982A] OK 群益直接 {len(r)}檔")
             return r
-    # 備援：基金資訊觀測站
-    return crawl_fundclear(sess, eid, "49YTW")
+    return []
 
-def crawl_00985A(sess):
-    return crawl_nomura(sess, "00985A")
 
-def crawl_00980A(sess):
-    return crawl_nomura(sess, "00980A")
+# ═══════════════════════════════════════════════════════
+# 各ETF爬蟲入口
+# ═══════════════════════════════════════════════════════
 
-def crawl_nomura(sess, eid):
-    """野村 — 抓官網持股頁"""
-    urls = [
-        f"https://www.nomurafunds.com.tw/ETFWEB/api/fund/portfolio?fundNo={eid}",
-        f"https://www.nomurafunds.com.tw/ETFWEB/product-description?fundNo={eid}&tab=Shareholding",
-        f"https://money.nomurafunds.com.tw/etf/{eid}/holding",
-    ]
-    fetch("https://www.nomurafunds.com.tw/", sess)
-    time.sleep(2)
-    for url in urls:
-        log.info(f"  [{eid}] {url[:70]}...")
-        html = fetch(url, sess, referer="https://www.nomurafunds.com.tw/ETFWEB/")
-        if not html: continue
-        # 先試 JSON
-        try:
-            d = json.loads(html)
-            r = parse_nomura_json(d, eid)
-            if r: return r
-        except: pass
-        # 再試 HTML 表格
-        r = parse_html(html)
-        if r:
-            log.info(f"  [{eid}] OK {len(r)}檔")
-            return r
-    return crawl_fundclear(sess, eid)
-
-def parse_nomura_json(d, eid):
-    """解析野村 API JSON 格式"""
-    result = []
-    # 可能的欄位名稱
-    items = d.get("data") or d.get("list") or d.get("holdings") or []
-    if not isinstance(items, list): return []
-    for item in items:
-        if not isinstance(item, dict): continue
-        code = str(item.get("stockCode") or item.get("code") or item.get("securityCode") or "").strip()
-        if not is_code(code): continue
-        result.append({
-            "code": code,
-            "name": item.get("stockName") or item.get("name") or "—",
-            "shares": toint(item.get("shares") or item.get("quantity") or 0),
-            "weight": tofloat(item.get("weight") or item.get("ratio") or item.get("proportion") or 0),
-        })
+def crawl(eid, sess):
+    # 先試公開資訊觀測站
+    result = crawl_mops(sess, eid)
     if result:
-        log.info(f"  [{eid}] OK JSON {len(result)}檔")
-    return result
+        return result
 
-def crawl_00984A(sess):
-    """安聯 — 嘗試多個 URL"""
-    eid = "00984A"
-    urls = [
-        "https://www.allianzgi.com.tw/zh-tw/individual/funds-etf/active-etf/00984A/portfolio",
-        "https://www.allianzgi.com.tw/zh-tw/funds/etf/00984A",
-        "https://www.allianzgi.com.tw/zh-tw/individual/funds-etf/active-etf/00984A",
-    ]
-    fetch("https://www.allianzgi.com.tw/zh-tw/", sess)
-    time.sleep(2)
-    for url in urls:
-        log.info(f"  [{eid}] {url[:70]}...")
-        html = fetch(url, sess, referer="https://www.allianzgi.com.tw/zh-tw/")
-        if not html: continue
-        r = parse_html(html)
-        if r:
-            log.info(f"  [{eid}] OK {len(r)}檔")
-            return r
-    return crawl_fundclear(sess, eid)
+    # 群益有靜態頁面，額外備援
+    if eid == "00982A":
+        result = crawl_00982A_direct(sess)
+        if result:
+            return result
 
-def crawl_fundclear(sess, eid, fund_code=None):
-    """
-    基金資訊觀測站備援
-    主動式ETF依法每日申報持股，可從此查詢
-    """
-    fc = fund_code or eid
-    log.info(f"  [{eid}] 基金資訊觀測站備援...")
-    urls = [
-        f"https://announce.fundclear.com.tw/MOPSonshoreFundWeb/A01_02.jsp?fundId={fc}",
-        f"https://www.fundclear.com.tw/etf/product?fundId={eid}",
-    ]
-    for url in urls:
-        html = fetch(url, sess, referer="https://www.fundclear.com.tw/")
-        if not html: continue
-        r = parse_html(html)
-        if r:
-            log.info(f"  [{eid}] OK fundclear {len(r)}檔")
-            return r
     log.warning(f"  [{eid}] 全部失敗")
     return []
+
 
 # ═══════════════════════════════════════════════════════
 # 比對 & 快照
@@ -313,28 +259,24 @@ def save_snap(eid, holdings, date_str):
         encoding="utf-8"
     )
 
+
 # ═══════════════════════════════════════════════════════
 # 主程式
 # ═══════════════════════════════════════════════════════
 
-CRAWLERS = {
-    "00982A": crawl_00982A,
-    "00981A": crawl_00981A,
-    "00985A": crawl_00985A,
-    "00980A": crawl_00980A,
-    "00984A": crawl_00984A,
-}
-
 def run():
     now = datetime.now(TW)
     log.info("=" * 55)
-    log.info(f"台股主動ETF爬蟲 v3  {now:%Y-%m-%d %H:%M} TW")
+    log.info(f"台股主動ETF爬蟲 v4  {now:%Y-%m-%d %H:%M} TW")
+    log.info("主要來源：公開資訊觀測站 mops.twse.com.tw")
     log.info("=" * 55)
+
     if now.weekday() >= 5:
         log.info("非交易日，跳過。"); return
 
     date_str = now.strftime("%Y-%m-%d")
     sess = requests.Session()
+
     output = {
         "generated_at": now.isoformat(),
         "date": date_str,
@@ -347,7 +289,7 @@ def run():
         log.info(f"\n{'─'*40}\n[{eid}] {cfg['name']}")
         today_h = []
         try:
-            today_h = CRAWLERS[eid](sess)
+            today_h = crawl(eid, sess)
         except Exception as e:
             log.error(f"  [{eid}] 例外: {e}")
 
@@ -367,7 +309,7 @@ def run():
             f"新:{len(changes.get('new_in',[]))} 出:{len(changes.get('out_of',[]))} "
             f"加:{len(changes.get('weight_up',[]))} 減:{len(changes.get('weight_dn',[]))}"
         )
-        time.sleep(3)
+        time.sleep(2)
 
     (DATA / "etf_data.json").write_text(
         json.dumps(output, ensure_ascii=False, indent=2), encoding="utf-8"
@@ -378,7 +320,9 @@ def run():
     err = [k for k, v in output["etfs"].items() if not v["success"]]
     log.info(f"\n{'='*55}")
     log.info(f"完成！成功:{len(ok)} {ok}")
-    if err: log.warning(f"失敗:{len(err)} {err}")
+    if err:
+        log.warning(f"失敗:{len(err)} {err}")
+        log.warning("→ 請用網頁儀表板的手動匯入功能補齊")
     log.info("=" * 55)
 
 if __name__ == "__main__":
